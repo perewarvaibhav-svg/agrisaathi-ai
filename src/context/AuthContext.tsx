@@ -66,18 +66,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     useEffect(() => {
         const initSession = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user) {
-                const profile = await getOrCreateProfile(session.user);
-                if (profile) setUser(profile);
+            try {
+                const { data: { session }, error } = await supabase.auth.getSession();
+                if (error) {
+                    console.warn("Auth initialization warning:", error.message);
+                    if (error.status === 400 || error.message.toLowerCase().includes("refresh token")) {
+                        // Clear invalid/stale local session data
+                        await supabase.auth.signOut({ scope: 'local' });
+                        setUser(null);
+                    }
+                } else if (session?.user) {
+                    const profile = await getOrCreateProfile(session.user);
+                    if (profile) setUser(profile);
+                }
+            } catch (e) {
+                console.error("Auth initialization fatal error:", e);
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         };
 
-        initSession();
-
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            async (event: string, session: { user?: { id: string; email?: string; user_metadata?: { full_name?: string; name?: string } } } | null) => {
+            async (event: string, session: any) => {
                 if (event === 'SIGNED_OUT') {
                     setUser(null);
                     setLoading(false);
@@ -85,11 +95,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 }
 
                 if (session?.user) {
-                    // For OAuth (SIGNED_IN after redirect), always upsert then redirect
                     const profile = await getOrCreateProfile(session.user);
                     if (profile) {
                         setUser(profile);
-                        // Redirect after OAuth callback
                         if (event === 'SIGNED_IN' && typeof window !== 'undefined') {
                             const url = new URL(window.location.href);
                             if (url.pathname === '/login' || url.pathname === '/signup') {
@@ -103,6 +111,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 setLoading(false);
             }
         );
+
+        initSession();
 
         return () => { subscription.unsubscribe(); };
     }, [router]);
