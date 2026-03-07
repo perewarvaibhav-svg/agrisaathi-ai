@@ -65,12 +65,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     useEffect(() => {
+        // Global handler for untracked auth fetch errors
+        const handleAuthError = (e: PromiseRejectionEvent | ErrorEvent) => {
+            const msg = (e instanceof PromiseRejectionEvent ? e.reason?.message : e.message) || "";
+            if (msg.includes("Refresh Token Not Found") || msg.includes("invalid_refresh_token")) {
+                console.warn("Background Auth Failure detected, clearing local session...");
+                supabase.auth.signOut({ scope: 'local' });
+                setUser(null);
+                setLoading(false);
+            }
+        };
+
+        if (typeof window !== 'undefined') {
+            window.addEventListener('unhandledrejection', handleAuthError);
+        }
+
         const initSession = async () => {
             try {
                 const { data: { session }, error } = await supabase.auth.getSession();
                 if (error) {
                     console.warn("Auth initialization warning:", error.message);
-                    if (error.status === 400 || error.message.toLowerCase().includes("refresh token") || error.message.toLowerCase().includes("not found")) {
+                    // Crucial: 400 or 401 errors on token refresh mean we must clear local state
+                    if (error.status === 400 || error.status === 401 || error.message.toLowerCase().includes("refresh token") || error.message.toLowerCase().includes("not found")) {
                         // Clear invalid/stale local session data
                         await supabase.auth.signOut({ scope: 'local' });
                         setUser(null);
@@ -119,7 +135,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         initSession();
 
-        return () => { subscription.unsubscribe(); };
+        return () => {
+            if (typeof window !== 'undefined') window.removeEventListener('unhandledrejection', handleAuthError);
+            subscription.unsubscribe();
+        };
     }, [router]);
 
     const login = async (email: string, pass: string) => {
