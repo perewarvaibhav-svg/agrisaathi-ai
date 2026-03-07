@@ -5,11 +5,12 @@ import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import ModulePanel from "@/components/ModulePanel";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import ChatLog from "@/components/ChatLog";
 
 const ML_BASE = "";
 
 /* ─── Types ─── */
-interface Message { id: number; role: "user" | "ai"; text: string; }
+interface Message { id: number; role: "user" | "ai"; text: string; timestamp?: number; }
 
 /* ─── Format backend module responses cleanly ─── */
 const formatModuleResponse = (mod: string, d: Record<string, any>): string => {
@@ -63,7 +64,7 @@ export default function AdvisorDashboard() {
   const [selectedLang, setSelectedLang] = useState("en");
   const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [chatSessions, setChatSessions] = useState<Array<{id: string; title: string; date: string; messages: Message[]}>>([]);
+  const [chatSessions, setChatSessions] = useState<Array<{ id: string; title: string; date: string; messages: Message[] }>>([]);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -79,7 +80,7 @@ export default function AdvisorDashboard() {
           console.error("Failed to load chat history", e);
         }
       }
-      
+
       // Load all chat sessions
       const savedSessions = localStorage.getItem(`agrisaathi_sessions_${user.id}`);
       if (savedSessions) {
@@ -115,7 +116,7 @@ export default function AdvisorDashboard() {
 
   /* ── Main submit handler (used by ModulePanel + chat input) ── */
   const handleSubmit = async (question: string, payload?: Record<string, unknown>) => {
-    const userMsg: Message = { id: Date.now(), role: "user", text: question };
+    const userMsg: Message = { id: Date.now(), role: "user", text: question, timestamp: Date.now() };
     setMessages(prev => [...prev, userMsg]);
     setIsTyping(true);
 
@@ -130,14 +131,14 @@ export default function AdvisorDashboard() {
           const res = await fetch(`${ML_BASE}/api/market-prices?commodity=${body.commodity}&state=${encodeURIComponent(body.state as string)}&lang=${selectedLang}`);
           if (res.ok) {
             const d = await res.json();
-            
+
             // Check if API returned an error
             if (d.error) {
               pushAI(`❌ ${d.error}`);
               setIsTyping(false);
               return;
             }
-            
+
             let txt = `💰 MARKET PRICES — ${d.commodity} in ${d.state}\n`;
             txt += `📌 Current: ₹${d.current_price_inr}/${d.unit}${d.msp ? ` (MSP: ₹${d.msp})` : ""}\n`;
             txt += `\n📈 7-Day Trend: ${d["7_day_trend"].slice(-3).map((t: { date: string; price: number }) => `${t.date}: ₹${t.price}`).join(" → ")}\n`;
@@ -258,7 +259,7 @@ export default function AdvisorDashboard() {
   };
 
   const pushAI = (text: string) =>
-    setMessages(prev => [...prev, { id: Date.now() + 1, role: "ai", text }]);
+    setMessages(prev => [...prev, { id: Date.now() + 1, role: "ai", text, timestamp: Date.now() }]);
 
   const handleSend = () => {
     if (!input.trim() || isTyping) return;
@@ -290,7 +291,7 @@ export default function AdvisorDashboard() {
     }
   };
 
-  const loadSession = (session: {id: string; title: string; date: string; messages: Message[]}) => {
+  const loadSession = (session: { id: string; title: string; date: string; messages: Message[] }) => {
     setMessages(session.messages);
     setShowHistory(false);
   };
@@ -315,383 +316,331 @@ export default function AdvisorDashboard() {
   /* ── Render ── */
   return (
     <ProtectedRoute>
-    <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "var(--font-body)", color: C.accent, display: "flex", flexDirection: "column" }}>
-      <Navbar />
+      <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "var(--font-body)", color: C.accent, display: "flex", flexDirection: "column" }}>
+        <Navbar />
 
-      {/* ── Main 2-column dashboard ── */}
-      <div style={{
-        display: "flex", flex: 1,
-        paddingTop: "90px", /* accounts for fixed Navbar height */
-        height: "calc(100vh - 90px)",
-        overflow: "hidden",
-      }}>
-
-        {/* ══ LEFT SIDEBAR — Module Selector ══ */}
-        <aside style={{
-          width: "300px", flexShrink: 0,
-          background: C.sidebar,
-          borderRight: `1px solid ${C.border}`,
-          overflowY: "auto",
-          padding: "1.25rem 0.75rem",
-          display: "flex", flexDirection: "column", gap: "0.75rem",
+        {/* ── Main 2-column dashboard ── */}
+        <div style={{
+          display: "flex", flex: 1,
+          paddingTop: "90px", /* accounts for fixed Navbar height */
+          height: "calc(100vh - 90px)",
+          overflow: "hidden",
         }}>
-          <div style={{ fontSize: "0.68rem", letterSpacing: "0.15em", color: C.dim, padding: "0 0.5rem", marginBottom: "0.25rem" }}>
-            SELECT AI MODULE
-          </div>
-          <ModulePanel onSubmit={handleSubmit} />
 
-          {/* Climate map link */}
-          <Link href="/climate-map" style={{
-            display: "flex", alignItems: "center", gap: "0.5rem",
-            background: "rgba(173,255,47,0.04)", border: `1px solid ${C.border}`,
-            color: C.accent, padding: "0.65rem 0.9rem", borderRadius: "10px",
-            fontSize: "0.82rem", fontWeight: 600, textDecoration: "none",
-            marginTop: "0.5rem",
+          {/* ══ LEFT SIDEBAR — Module Selector ══ */}
+          <aside style={{
+            width: "300px", flexShrink: 0,
+            background: C.sidebar,
+            borderRight: `1px solid ${C.border}`,
+            overflowY: "auto",
+            padding: "1.25rem 0.75rem",
+            display: "flex", flexDirection: "column", gap: "0.75rem",
           }}>
-            🗺️ Open Climate Map
-          </Link>
-        </aside>
-
-        {/* ══ RIGHT — Chat Panel ══ */}
-        <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: C.bg }}>
-
-          {/* Chat header */}
-          <div style={{
-            background: C.header, padding: "1rem 1.5rem",
-            color: C.accent, fontWeight: 600, fontSize: "0.9rem",
-            letterSpacing: "0.04em", flexShrink: 0,
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-          }}>
-            <span>🌾 AgriSaathi AI Assistant</span>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-              <span style={{ fontSize: "0.72rem", color: C.dim, fontWeight: 400 }}>
-                Lang: {selectedLang.toUpperCase()}
-              </span>
-              <button
-                onClick={() => setShowHistory(!showHistory)}
-                style={{
-                  background: "rgba(173,255,47,0.1)", border: `1px solid ${C.border}`,
-                  color: C.accent, padding: "0.4rem 0.8rem", borderRadius: "6px",
-                  fontSize: "0.75rem", cursor: "pointer", fontWeight: 600
-                }}
-                title="Chat History"
-              >
-                📜 History
-              </button>
-              <button
-                onClick={startNewChat}
-                style={{
-                  background: "rgba(173,255,47,0.1)", border: `1px solid ${C.border}`,
-                  color: C.accent, padding: "0.4rem 0.8rem", borderRadius: "6px",
-                  fontSize: "0.75rem", cursor: "pointer", fontWeight: 600
-                }}
-                title="New Chat"
-              >
-                ➕ New
-              </button>
-              <button
-                onClick={() => setShowSettings(!showSettings)}
-                style={{
-                  background: "rgba(173,255,47,0.1)", border: `1px solid ${C.border}`,
-                  color: C.accent, padding: "0.4rem 0.8rem", borderRadius: "6px",
-                  fontSize: "0.75rem", cursor: "pointer", fontWeight: 600
-                }}
-                title="Settings"
-              >
-                ⚙️
-              </button>
+            <div style={{ fontSize: "0.68rem", letterSpacing: "0.15em", color: C.dim, padding: "0 0.5rem", marginBottom: "0.25rem" }}>
+              SELECT AI MODULE
             </div>
-          </div>
+            <ModulePanel onSubmit={handleSubmit} />
 
-          {/* Messages area */}
-          <div style={{
-            flex: 1, overflowY: "auto",
-            padding: "1.5rem",
-            display: "flex", flexDirection: "column", gap: "1.25rem",
-          }}>
-            {/* Welcome message */}
-            {messages.length === 0 && (
-              <div style={{
-                alignSelf: "flex-start", maxWidth: "75%",
-                background: "rgba(173,255,47,0.04)",
-                border: `1px solid ${C.border}`,
-                borderRadius: "0 12px 12px 12px",
-                padding: "0.9rem 1.2rem",
-                color: C.accent, fontSize: "0.92rem", lineHeight: 1.6,
-              }}>
-                <strong>👋 Hi, I am AgriSaathi!</strong><br />
-                Select a module from the left panel to get AI advice, or just type your farming question below.
-              </div>
-            )}
+            {/* Climate map link */}
+            <Link href="/climate-map" style={{
+              display: "flex", alignItems: "center", gap: "0.5rem",
+              background: "rgba(173,255,47,0.04)", border: `1px solid ${C.border}`,
+              color: C.accent, padding: "0.65rem 0.9rem", borderRadius: "10px",
+              fontSize: "0.82rem", fontWeight: 600, textDecoration: "none",
+              marginTop: "0.5rem",
+            }}>
+              🗺️ Open Climate Map
+            </Link>
+          </aside>
 
-            {messages.map((msg) => (
-              <div key={msg.id} style={{
-                alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
-                maxWidth: "78%",
-              }}>
-                {msg.role === "user" ? (
-                  <div style={{
-                    background: "rgba(173,255,47,0.1)",
-                    border: `1px solid rgba(173,255,47,0.2)`,
-                    borderRadius: "12px 12px 0 12px",
-                    padding: "0.75rem 1.1rem",
-                    color: C.accent, fontSize: "0.9rem", lineHeight: 1.5,
-                  }}>{msg.text}</div>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                    <div style={{
-                      background: C.panel,
-                      border: `1px solid ${C.border}`,
-                      borderRadius: "0 12px 12px 12px",
-                      padding: "0.9rem 1.2rem",
-                      color: "rgba(173,255,47,0.9)", fontSize: "0.88rem", lineHeight: 1.7,
-                      whiteSpace: "pre-wrap", wordBreak: "break-word",
-                    }}>{msg.text}</div>
+          {/* ══ RIGHT — Chat Panel ══ */}
+          <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: C.bg }}>
 
-                    <button
-                      onClick={async (e) => {
-                        const btn = e.currentTarget;
-                        const originalText = btn.innerHTML;
-                        btn.innerHTML = "⏳ Generating Audio...";
-                        try {
-                          // Slice to 200 chars to prevent massive TTS payloads taking too long during demo
-                          const audio = new Audio(`${ML_BASE}/api/tts?text=${encodeURIComponent(msg.text.slice(0, 250))}&lang=${selectedLang}`);
-                          await audio.play();
-                          btn.innerHTML = `🔊 Playing Audio...`;
-                          audio.onended = () => btn.innerHTML = originalText;
-                        } catch (err) {
-                          btn.innerHTML = "⚠️ Audio Failed";
-                          setTimeout(() => btn.innerHTML = originalText, 2000);
-                        }
-                      }}
-                      style={{
-                        alignSelf: "flex-start",
-                        background: "rgba(173,255,47,0.06)",
-                        border: `1px solid ${C.border}`,
-                        color: C.accent,
-                        padding: "0.4rem 0.8rem",
-                        borderRadius: "6px",
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        transition: "all 0.2s",
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background = "rgba(173,255,47,0.15)"}
-                      onMouseLeave={e => e.currentTarget.style.background = "rgba(173,255,47,0.06)"}
-                    >
-                      ▶ Listen in {selectedLang.toUpperCase()}
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {isTyping && (
-              <div style={{ alignSelf: "flex-start" }}>
-                <div style={{
-                  background: C.panel, border: `1px solid ${C.border}`,
-                  borderRadius: "0 12px 12px 12px", padding: "0.75rem 1.2rem",
-                  color: C.dim, fontSize: "0.82rem",
-                }}>
-                  <span style={{ animation: "pulse 1s infinite" }}>● ● ●</span>
-                </div>
-              </div>
-            )}
-            <div ref={endRef} />
-          </div>
-
-          {/* Input bar */}
-          <div style={{
-            borderTop: `1px solid ${C.border}`,
-            padding: "0.9rem 1.25rem",
-            display: "flex", alignItems: "center", gap: "0.75rem",
-            background: C.sidebar, flexShrink: 0,
-          }}>
-            <input
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && handleSend()}
-              placeholder="Type a question about your farm…"
-              style={{
-                flex: 1, background: "rgba(173,255,47,0.04)",
-                border: `1px solid ${C.border}`, color: C.accent,
-                borderRadius: "10px", padding: "0.65rem 1rem",
-                outline: "none", fontSize: "0.9rem", fontFamily: "inherit",
-              }}
-            />
-            <button
-              onClick={handleSend}
-              disabled={isTyping || !input.trim()}
-              style={{
-                background: input.trim() ? C.accent : "rgba(173,255,47,0.1)",
-                color: input.trim() ? "#000" : C.dim,
-                border: "none", borderRadius: "10px",
-                padding: "0.65rem 1.4rem", fontWeight: 700,
-                fontSize: "0.85rem", cursor: input.trim() ? "pointer" : "default",
-                transition: "all 0.2s", letterSpacing: "0.03em",
-              }}
-            >
-              {isTyping ? "…" : "Send ▶"}
-            </button>
-          </div>
-        </main>
-
-        {/* ══ HISTORY PANEL ══ */}
-        {showHistory && (
-          <div style={{
-            position: "fixed", top: "90px", right: "20px", width: "350px",
-            maxHeight: "calc(100vh - 120px)", background: C.sidebar,
-            border: `1px solid ${C.border}`, borderRadius: "12px",
-            padding: "1.5rem", zIndex: 1000, overflowY: "auto",
-            boxShadow: "0 20px 60px rgba(0,0,0,0.7)"
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-              <h3 style={{ margin: 0, fontSize: "1.1rem", color: C.accent }}>📜 Chat History</h3>
-              <button onClick={() => setShowHistory(false)} style={{
-                background: "transparent", border: "none", color: C.accent,
-                fontSize: "1.5rem", cursor: "pointer", padding: 0
-              }}>×</button>
-            </div>
-            
-            {chatSessions.length === 0 ? (
-              <p style={{ color: C.dim, fontSize: "0.85rem", textAlign: "center", padding: "2rem 0" }}>
-                No saved chat sessions yet
-              </p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                {chatSessions.map(session => (
-                  <div key={session.id} style={{
-                    background: "rgba(173,255,47,0.04)", border: `1px solid ${C.border}`,
-                    borderRadius: "8px", padding: "0.75rem", cursor: "pointer",
-                    transition: "all 0.2s"
+            {/* Chat header */}
+            <div style={{
+              background: C.header, padding: "1rem 1.5rem",
+              color: C.accent, fontWeight: 600, fontSize: "0.9rem",
+              letterSpacing: "0.04em", flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+            }}>
+              <span>🌾 AgriSaathi AI Assistant</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                <span style={{ fontSize: "0.72rem", color: C.dim, fontWeight: 400 }}>
+                  Lang: {selectedLang.toUpperCase()}
+                </span>
+                <button
+                  onClick={() => setShowHistory(!showHistory)}
+                  style={{
+                    background: "rgba(173,255,47,0.1)", border: `1px solid ${C.border}`,
+                    color: C.accent, padding: "0.4rem 0.8rem", borderRadius: "6px",
+                    fontSize: "0.75rem", cursor: "pointer", fontWeight: 600
                   }}
-                  onMouseEnter={e => e.currentTarget.style.background = "rgba(173,255,47,0.08)"}
-                  onMouseLeave={e => e.currentTarget.style.background = "rgba(173,255,47,0.04)"}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <div onClick={() => loadSession(session)} style={{ flex: 1 }}>
-                        <div style={{ fontSize: "0.85rem", color: C.accent, fontWeight: 600, marginBottom: "0.25rem" }}>
-                          {session.title}
-                        </div>
-                        <div style={{ fontSize: "0.7rem", color: C.dim }}>
-                          {session.date} · {session.messages.length} messages
-                        </div>
-                      </div>
-                      <button onClick={(e) => { e.stopPropagation(); deleteSession(session.id); }} style={{
-                        background: "rgba(255,0,0,0.1)", border: "1px solid rgba(255,0,0,0.3)",
-                        color: "#ff6b6b", padding: "0.25rem 0.5rem", borderRadius: "4px",
-                        fontSize: "0.7rem", cursor: "pointer"
-                      }}>🗑️</button>
+                  title="Chat History"
+                >
+                  📜 History
+                </button>
+                <button
+                  onClick={startNewChat}
+                  style={{
+                    background: "rgba(173,255,47,0.1)", border: `1px solid ${C.border}`,
+                    color: C.accent, padding: "0.4rem 0.8rem", borderRadius: "6px",
+                    fontSize: "0.75rem", cursor: "pointer", fontWeight: 600
+                  }}
+                  title="New Chat"
+                >
+                  ➕ New
+                </button>
+                <button
+                  onClick={() => setShowSettings(!showSettings)}
+                  style={{
+                    background: "rgba(173,255,47,0.1)", border: `1px solid ${C.border}`,
+                    color: C.accent, padding: "0.4rem 0.8rem", borderRadius: "6px",
+                    fontSize: "0.75rem", cursor: "pointer", fontWeight: 600
+                  }}
+                  title="Settings"
+                >
+                  ⚙️
+                </button>
+              </div>
+            </div>
+
+            {/* Messages area */}
+            <div style={{
+              flex: 1, overflowY: "auto",
+              padding: "1.5rem",
+              display: "flex", flexDirection: "column", gap: "1.25rem",
+            }}>
+              {/* Welcome message */}
+              {messages.length === 0 && (
+                <div style={{
+                  alignSelf: "flex-start", maxWidth: "75%",
+                  background: "rgba(173,255,47,0.04)",
+                  border: `1px solid ${C.border}`,
+                  borderRadius: "0 12px 12px 12px",
+                  padding: "0.9rem 1.2rem",
+                  color: C.accent, fontSize: "0.92rem", lineHeight: 1.6,
+                }}>
+                  <strong>👋 Hi, I am AgriSaathi!</strong><br />
+                  Select a module from the left panel to get AI advice, or just type your farming question below.
+                </div>
+              )}
+
+              {messages.map((msg) => (
+                <div key={msg.id} style={{
+                  alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
+                  maxWidth: "78%",
+                }}>
+                  {msg.role === "user" ? (
+                    <div style={{
+                      background: "rgba(173,255,47,0.1)",
+                      border: `1px solid rgba(173,255,47,0.2)`,
+                      borderRadius: "12px 12px 0 12px",
+                      padding: "0.75rem 1.1rem",
+                      color: C.accent, fontSize: "0.9rem", lineHeight: 1.5,
+                    }}>{msg.text}</div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                      <div style={{
+                        background: C.panel,
+                        border: `1px solid ${C.border}`,
+                        borderRadius: "0 12px 12px 12px",
+                        padding: "0.9rem 1.2rem",
+                        color: "rgba(173,255,47,0.9)", fontSize: "0.88rem", lineHeight: 1.7,
+                        whiteSpace: "pre-wrap", wordBreak: "break-word",
+                      }}>{msg.text}</div>
+
+                      <button
+                        onClick={async (e) => {
+                          const btn = e.currentTarget;
+                          const originalText = btn.innerHTML;
+                          btn.innerHTML = "⏳ Generating Audio...";
+                          try {
+                            // Slice to 200 chars to prevent massive TTS payloads taking too long during demo
+                            const audio = new Audio(`${ML_BASE}/api/tts?text=${encodeURIComponent(msg.text.slice(0, 250))}&lang=${selectedLang}`);
+                            await audio.play();
+                            btn.innerHTML = `🔊 Playing Audio...`;
+                            audio.onended = () => btn.innerHTML = originalText;
+                          } catch (err) {
+                            btn.innerHTML = "⚠️ Audio Failed";
+                            setTimeout(() => btn.innerHTML = originalText, 2000);
+                          }
+                        }}
+                        style={{
+                          alignSelf: "flex-start",
+                          background: "rgba(173,255,47,0.06)",
+                          border: `1px solid ${C.border}`,
+                          color: C.accent,
+                          padding: "0.4rem 0.8rem",
+                          borderRadius: "6px",
+                          fontSize: "0.75rem",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          transition: "all 0.2s",
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = "rgba(173,255,47,0.15)"}
+                        onMouseLeave={e => e.currentTarget.style.background = "rgba(173,255,47,0.06)"}
+                      >
+                        ▶ Listen in {selectedLang.toUpperCase()}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {isTyping && (
+                <div style={{ alignSelf: "flex-start" }}>
+                  <div style={{
+                    background: C.panel, border: `1px solid ${C.border}`,
+                    borderRadius: "0 12px 12px 12px", padding: "0.75rem 1.2rem",
+                    color: C.dim, fontSize: "0.82rem",
+                  }}>
+                    <span style={{ animation: "pulse 1s infinite" }}>● ● ●</span>
+                  </div>
+                </div>
+              )}
+              <div ref={endRef} />
+            </div>
+
+            {/* Input bar */}
+            <div style={{
+              borderTop: `1px solid ${C.border}`,
+              padding: "0.9rem 1.25rem",
+              display: "flex", alignItems: "center", gap: "0.75rem",
+              background: C.sidebar, flexShrink: 0,
+            }}>
+              <input
+                ref={inputRef}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleSend()}
+                placeholder="Type a question about your farm…"
+                style={{
+                  flex: 1, background: "rgba(173,255,47,0.04)",
+                  border: `1px solid ${C.border}`, color: C.accent,
+                  borderRadius: "10px", padding: "0.65rem 1rem",
+                  outline: "none", fontSize: "0.9rem", fontFamily: "inherit",
+                }}
+              />
+              <button
+                onClick={handleSend}
+                disabled={isTyping || !input.trim()}
+                style={{
+                  background: input.trim() ? C.accent : "rgba(173,255,47,0.1)",
+                  color: input.trim() ? "#000" : C.dim,
+                  border: "none", borderRadius: "10px",
+                  padding: "0.65rem 1.4rem", fontWeight: 700,
+                  fontSize: "0.85rem", cursor: input.trim() ? "pointer" : "default",
+                  transition: "all 0.2s", letterSpacing: "0.03em",
+                }}
+              >
+                {isTyping ? "…" : "Send ▶"}
+              </button>
+            </div>
+          </main>
+
+          {/* ══ CHAT LOG PANEL ══ */}
+          {showHistory && user && (
+            <ChatLog
+              userId={user.id}
+              currentMessages={messages}
+              onLoadSession={(msgs) => { setMessages(msgs); }}
+              onNewChat={startNewChat}
+              onClose={() => setShowHistory(false)}
+            />
+          )}
+
+          {/* ══ SETTINGS PANEL ══ */}
+          {showSettings && (
+            <div style={{
+              position: "fixed", top: "90px", right: "20px", width: "350px",
+              background: C.sidebar, border: `1px solid ${C.border}`,
+              borderRadius: "12px", padding: "1.5rem", zIndex: 1000,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.7)"
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+                <h3 style={{ margin: 0, fontSize: "1.1rem", color: C.accent }}>⚙️ Settings</h3>
+                <button onClick={() => setShowSettings(false)} style={{
+                  background: "transparent", border: "none", color: C.accent,
+                  fontSize: "1.5rem", cursor: "pointer", padding: 0
+                }}>×</button>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                <div>
+                  <div style={{ fontSize: "0.75rem", color: C.dim, marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    User Profile
+                  </div>
+                  <div style={{
+                    background: "rgba(173,255,47,0.04)", border: `1px solid ${C.border}`,
+                    borderRadius: "8px", padding: "1rem"
+                  }}>
+                    <div style={{ fontSize: "0.9rem", color: C.accent, fontWeight: 600, marginBottom: "0.25rem" }}>
+                      {user?.name || "User"}
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: C.dim }}>
+                      {user?.email || "No email"}
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-            
-            <button onClick={clearHistory} style={{
-              width: "100%", marginTop: "1rem", padding: "0.65rem",
-              background: "rgba(255,0,0,0.1)", border: "1px solid rgba(255,0,0,0.3)",
-              color: "#ff6b6b", borderRadius: "8px", cursor: "pointer",
-              fontSize: "0.8rem", fontWeight: 600
-            }}>
-              🗑️ Clear All History
-            </button>
-          </div>
-        )}
+                </div>
 
-        {/* ══ SETTINGS PANEL ══ */}
-        {showSettings && (
-          <div style={{
-            position: "fixed", top: "90px", right: "20px", width: "350px",
-            background: C.sidebar, border: `1px solid ${C.border}`,
-            borderRadius: "12px", padding: "1.5rem", zIndex: 1000,
-            boxShadow: "0 20px 60px rgba(0,0,0,0.7)"
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
-              <h3 style={{ margin: 0, fontSize: "1.1rem", color: C.accent }}>⚙️ Settings</h3>
-              <button onClick={() => setShowSettings(false)} style={{
-                background: "transparent", border: "none", color: C.accent,
-                fontSize: "1.5rem", cursor: "pointer", padding: 0
-              }}>×</button>
-            </div>
-            
-            <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-              <div>
-                <div style={{ fontSize: "0.75rem", color: C.dim, marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  User Profile
-                </div>
-                <div style={{
-                  background: "rgba(173,255,47,0.04)", border: `1px solid ${C.border}`,
-                  borderRadius: "8px", padding: "1rem"
-                }}>
-                  <div style={{ fontSize: "0.9rem", color: C.accent, fontWeight: 600, marginBottom: "0.25rem" }}>
-                    {user?.name || "User"}
+                <div>
+                  <div style={{ fontSize: "0.75rem", color: C.dim, marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    Language
                   </div>
-                  <div style={{ fontSize: "0.75rem", color: C.dim }}>
-                    {user?.email || "No email"}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <div style={{ fontSize: "0.75rem", color: C.dim, marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Language
-                </div>
-                <div style={{
-                  background: "rgba(173,255,47,0.04)", border: `1px solid ${C.border}`,
-                  borderRadius: "8px", padding: "0.75rem", color: C.accent, fontSize: "0.85rem"
-                }}>
-                  Current: {selectedLang.toUpperCase()}
-                  <div style={{ fontSize: "0.7rem", color: C.dim, marginTop: "0.25rem" }}>
-                    Change from Navbar dropdown
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <div style={{ fontSize: "0.75rem", color: C.dim, marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Chat Settings
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  <button onClick={saveCurrentSession} style={{
-                    width: "100%", padding: "0.65rem", background: "rgba(173,255,47,0.1)",
-                    border: `1px solid ${C.border}`, color: C.accent, borderRadius: "8px",
-                    cursor: "pointer", fontSize: "0.8rem", fontWeight: 600, textAlign: "left"
+                  <div style={{
+                    background: "rgba(173,255,47,0.04)", border: `1px solid ${C.border}`,
+                    borderRadius: "8px", padding: "0.75rem", color: C.accent, fontSize: "0.85rem"
                   }}>
-                    💾 Save Current Chat
-                  </button>
-                  <button onClick={startNewChat} style={{
-                    width: "100%", padding: "0.65rem", background: "rgba(173,255,47,0.1)",
-                    border: `1px solid ${C.border}`, color: C.accent, borderRadius: "8px",
-                    cursor: "pointer", fontSize: "0.8rem", fontWeight: 600, textAlign: "left"
-                  }}>
-                    ➕ Start New Chat
-                  </button>
+                    Current: {selectedLang.toUpperCase()}
+                    <div style={{ fontSize: "0.7rem", color: C.dim, marginTop: "0.25rem" }}>
+                      Change from Navbar dropdown
+                    </div>
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <div style={{ fontSize: "0.75rem", color: C.dim, marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Storage Info
+                <div>
+                  <div style={{ fontSize: "0.75rem", color: C.dim, marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    Chat Settings
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    <button onClick={saveCurrentSession} style={{
+                      width: "100%", padding: "0.65rem", background: "rgba(173,255,47,0.1)",
+                      border: `1px solid ${C.border}`, color: C.accent, borderRadius: "8px",
+                      cursor: "pointer", fontSize: "0.8rem", fontWeight: 600, textAlign: "left"
+                    }}>
+                      💾 Save Current Chat
+                    </button>
+                    <button onClick={startNewChat} style={{
+                      width: "100%", padding: "0.65rem", background: "rgba(173,255,47,0.1)",
+                      border: `1px solid ${C.border}`, color: C.accent, borderRadius: "8px",
+                      cursor: "pointer", fontSize: "0.8rem", fontWeight: 600, textAlign: "left"
+                    }}>
+                      ➕ Start New Chat
+                    </button>
+                  </div>
                 </div>
-                <div style={{
-                  background: "rgba(173,255,47,0.04)", border: `1px solid ${C.border}`,
-                  borderRadius: "8px", padding: "0.75rem", fontSize: "0.75rem", color: C.dim
-                }}>
-                  <div>Current messages: {messages.length}</div>
-                  <div>Saved sessions: {chatSessions.length}</div>
-                  <div style={{ marginTop: "0.5rem", fontSize: "0.7rem" }}>
-                    Data stored locally in browser
+
+                <div>
+                  <div style={{ fontSize: "0.75rem", color: C.dim, marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    Storage Info
+                  </div>
+                  <div style={{
+                    background: "rgba(173,255,47,0.04)", border: `1px solid ${C.border}`,
+                    borderRadius: "8px", padding: "0.75rem", fontSize: "0.75rem", color: C.dim
+                  }}>
+                    <div>Current messages: {messages.length}</div>
+                    <div>Saved sessions: {chatSessions.length}</div>
+                    <div style={{ marginTop: "0.5rem", fontSize: "0.7rem" }}>
+                      Data stored locally in browser
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
 
-      <style jsx>{`
+        <style jsx>{`
         @keyframes pulse { 0%,100%{opacity:.3} 50%{opacity:1} }
         aside::-webkit-scrollbar { width: 4px; }
         aside::-webkit-scrollbar-track { background: transparent; }
@@ -704,7 +653,7 @@ export default function AdvisorDashboard() {
           #dashboard-root { flex-direction: column !important; }
         }
       `}</style>
-    </div>
+      </div>
     </ProtectedRoute>
   );
 }
